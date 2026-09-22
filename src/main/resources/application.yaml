@@ -1,9 +1,9 @@
 spring:
   datasource:
     driver-class-name: org.postgresql.Driver
-    url: jdbc:postgresql://localhost:5432/postgres
-    username: user
-    password: password
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:postgres}
+    username: ${DB_USERNAME:user}
+    password: ${DB_PASSWORD:password}
 
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
@@ -19,18 +19,20 @@ spring:
 
   data:
     redis:
-      port: 6379
-      host: localhost
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
       channel:
         profile-view: profile_view_channel
 
   kafka:
-    bootstrap-servers: localhost:9094
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9094}
+
     consumer:
       group-id: analytics-service-group
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -38,7 +40,7 @@ spring:
 app:
   kafka:
     topics:
-      comment-events: "comment_events"
+      comment-events: comment_events
 
 server:
   port: 8086
@@ -48,5 +50,5 @@ logging:
     root: info
 
 project-service:
-  host: localhost
-  port: 8082
+  host: ${PROJECT_SERVICE_HOST:localhost}
+  port: ${PROJECT_SERVICE_PORT:8082}
