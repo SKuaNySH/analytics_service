@@ -1,109 +1,125 @@
-# Service Template
+# Analytics Service
 
-Стандартный шаблон проекта на SpringBoot
+Сервис аналитики платформы CorporationX. Он собирает события пользовательской активности, сохраняет их в PostgreSQL и предоставляет внутреннюю логику для получения аналитики по получателю, типу события и периоду.
 
-# Использованные технологии
+Сервис запускается как Spring Boot-приложение и работает на порту `8086`.
 
-* [Spring Boot](https://spring.io/projects/spring-boot) – как основной фрэймворк
-* [PostgreSQL](https://www.postgresql.org/) – как основная реляционная база данных
-* [Redis](https://redis.io/) – как кэш и очередь сообщений через pub/sub
-* [testcontainers](https://testcontainers.com/) – для изолированного тестирования с базой данных
-* [Liquibase](https://www.liquibase.org/) – для ведения миграций схемы БД
-* [Gradle](https://gradle.org/) – как система сборки приложения
-* [Lombok](https://projectlombok.org/) – для удобной работы с POJO классами
-* [MapStruct](https://mapstruct.org/) – для удобного маппинга между POJO классами
+## Функциональность
 
-# База данных
+- принимает события о создании комментариев из Kafka topic `comment_events`;
+- преобразует событие комментария в аналитическое событие:
+  - `postId` используется как `receiverId`;
+  - `authorId` используется как `actorId`;
+  - тип события устанавливается в `POST_COMMENT`;
+  - `createdAt` используется как время получения события;
+- валидирует события перед сохранением: идентификаторы должны быть положительными, тип и время обязательны, время события не может быть в будущем;
+- сохраняет события в таблицу `analytics_event` в PostgreSQL;
+- фильтрует аналитику по `receiverId` и `EventType`;
+- поддерживает готовые интервалы `LAST_HOUR`, `LAST_DAY`, `LAST_WEEK`, `LAST_MONTH` и произвольный диапазон `from`–`to`;
+- возвращает найденные события в порядке от новых к старым;
+- применяет Liquibase-миграции при запуске приложения.
 
-* База поднимается в отдельном сервисе [infra](../infra)
-* Redis поднимается в единственном инстансе тоже в [infra](../infra)
-* Liquibase сам накатывает нужные миграции на голый PostgreSql при старте приложения
-* В тестах используется [testcontainers](https://testcontainers.com/), в котором тоже запускается отдельный инстанс
-  postgres
-* В коде продемонстрирована работа как с JdbcTemplate, так и с JPA (Hibernate)
+Поддерживаемые типы аналитических событий описаны в `EventType`. Сейчас обработчик Kafka подключен к событиям комментариев.
 
-# Как начать разработку начиная с шаблона?
+## Технологии
 
-1. Сначала нужно склонировать этот репозиторий
+- Java 17
+- Spring Boot
+- Spring Data JPA
+- Apache Kafka
+- PostgreSQL
+- Redis
+- Liquibase
+- Gradle
+- MapStruct и Lombok
+- JUnit 5, Mockito и Testcontainers
 
-```shell
-git clone https://github.com/FAANG-School/ServiceTemplate
-```
+## Требования
 
-2. Далее удаляем служебную директорию для git
+- JDK 17;
+- PostgreSQL;
+- Kafka;
+- Redis.
 
-```shell
-# Переходим в корневую директорию проекта
-cd ServiceTemplate
-rm -rf .git
-```
+При локальном запуске сервис ожидает следующие значения по умолчанию:
 
-3. Далее нужно создать совершенно пустой репозиторий в github/gitlab
+| Компонент | Адрес по умолчанию |
+|---|---|
+| PostgreSQL | `localhost:5432`, база `postgres`, пользователь `user`, пароль `password` |
+| Kafka | `localhost:9094` |
+| Redis | `localhost:6379` |
+| Project Service | `localhost:8082` |
 
-4. Создаём новый репозиторий локально и коммитим изменения
+## Запуск локально
 
-```shell
-git init
-git remote add origin <link_to_repo>
-git add .
-git commit -m "<msg>"
-```
-
-Готово, можно начинать работу!
-
-# Как запустить локально?
-
-Сначала нужно развернуть базу данных из директории [infra](../infra)
-
-Далее собрать gradle проект
+1. Запустите PostgreSQL, Kafka и Redis. В общей инфраструктуре проекта зависимости можно поднять из директории `infra`.
+2. Соберите приложение:
 
 ```shell
-# Нужно запустить из корневой директории, где лежит build.gradle.kts
-gradle build
+./gradlew clean bootJar
 ```
 
-Запустить jar'ник
+Для Windows:
 
 ```shell
-java -jar build/libs/ServiceTemplate-1.0.jar
+gradlew.bat clean bootJar
 ```
 
-Но легче всё это делать через IDE
+3. Запустите собранный JAR:
 
-# Код
+```shell
+java -jar build/libs/service.jar
+```
 
-RESTful приложения калькулятор с единственным endpoint'ом, который принимает 2 числа и выдает результаты их сложения,
-вычитаяни, умножения и деления
+Для подключения к сервисам с другими адресами передайте переменные окружения:
 
-* Обычная трёхслойная
-  архитектура – [Controller](src/main/java/faang/school/analytics/controller), [Service](src/main/java/faang/school/analytics/service), [Repository](src/main/java/faang/school/analytics/repository)
-* Слой Repository реализован и на jdbcTemplate, и на JPA (Hibernate)
-* Написан [GlobalExceptionHandler](src/main/java/faang/school/analytics/controller/GlobalExceptionHandler.java)
-  который умеет возвращать ошибки в формате `{"code":"CODE", "message": "message"}`
-* Используется TTL кэширование вычислений
-  в [CalculationTtlCacheService](src/main/java/faang/school/analytics/service/cache/CalculationTtlCacheService.java)
-* Реализован простой Messaging через [Redis pub/sub](https://redis.io/docs/manual/pubsub/)
-  * [Конфигурация](src/main/java/faang/school/analytics/config/RedisConfig.java) –
-    сетапится [RedisTemplate](https://docs.spring.io/spring-data/redis/docs/current/api/org/springframework/data/redis/core/RedisTemplate.html) –
-    класс, для удобной работы с Redis силами Spring
-  * [Отправитель](src/main/java/faang/school/analytics/service/messaging/RedisCalculationPublisher.java) – генерит
-    рандомные запросы и отправляет в очередь
-  * [Получатель](src/main/java/faang/school/analytics/service/messaging/RedisCalculationSubscriber.java) –
-    получает запросы и отправляет задачи асинхронно выполняться
-    в [воркер](src/main/java/faang/school/analytics/service/worker/CalculationWorker.java)
+```shell
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=postgres
+DB_USERNAME=user
+DB_PASSWORD=password
+REDIS_HOST=localhost
+REDIS_PORT=6379
+KAFKA_BOOTSTRAP_SERVERS=localhost:9094
+PROJECT_SERVICE_HOST=localhost
+PROJECT_SERVICE_PORT=8082
+```
 
-# Тесты
+Указанные переменные имеют значения по умолчанию и могут быть переопределены при запуске приложения.
 
-Написаны только для единственного REST endpoint'а
-* SpringBootTest
-* MockMvc
-* Testcontainers
-* AssertJ
-* JUnit5
-* Parameterized tests
+## Запуск в Docker
 
-# TODO
+Docker-образ собирается из уже созданного JAR-файла:
 
-* Dockerfile, который подключается к сети запущенной postgres в docker-compose
-* Redis connectivity
-* ...
+```shell
+gradlew.bat clean bootJar
+docker build -t analytics-service .
+```
+
+Запустите контейнер в сети, где доступны PostgreSQL, Kafka и Redis:
+
+```shell
+docker run --rm --name analytics-service --network <network-name> -p 8086:8086 `
+  -e DB_HOST=postgres `
+  -e DB_PORT=5432 `
+  -e DB_NAME=postgres `
+  -e DB_USERNAME=user `
+  -e DB_PASSWORD=password `
+  -e REDIS_HOST=redis `
+  -e REDIS_PORT=6379 `
+  -e KAFKA_BOOTSTRAP_SERVERS=kafka:9092 `
+  analytics-service
+```
+
+Параметр `--network <network-name>` подключает контейнер к сети, в которой уже запущены зависимости. Значения `DB_HOST`, `REDIS_HOST` и `KAFKA_BOOTSTRAP_SERVERS` должны соответствовать именам сервисов и портам внутри Docker-сети. Dockerfile открывает порт `8086`.
+
+## Тесты
+
+Запуск тестов:
+
+```shell
+gradlew.bat test
+```
+
+Тесты используют JUnit 5, Mockito и Testcontainers для проверки работы с PostgreSQL и Redis.
